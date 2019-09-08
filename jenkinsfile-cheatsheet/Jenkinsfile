@@ -188,7 +188,17 @@ pipeline{
                 }
             }
         }
+        stage('STAGE 5'){
+            steps{
+                steps{
+                    build job: 'job2',
+                          parameters: [string(name: 'parameter1', value: 'asdf sdf')],
+                          propagate: true ,
+                          wait: true
 
+                }
+            }
+        }
         stage('STAGE 5'){
             steps{
                 script{
