@@ -1,0 +1,232 @@
+pipeline{
+    agent {
+        // node{
+        //     label "slave 1"
+        //     customWorkspace "/home/asdf/cuscomworkspace"
+        // }
+        docker{
+            image 'example.com/myImages/ubuntu:5.0.1'
+            label 'slave 1'
+            args '-e someEnv=dev'
+            alwaysPull true
+            customWorkspace '/var/lib/myworkspace'
+            registryUrl 'https://example.com'
+            registryCredentialsId 'sdkels'
+        }
+    } //any, none, label, node {}, docker, dockerfile
+    triggers{
+        //min, hr, day of month, month, day of week
+        cron('0 1 2 3 1-7')
+        //@yearly,@annually,@monthly,@weekly,@daily,@midnight,@hourly
+        //cron('@daily')
+        //cron('TZ=.....') //TIMEZONE
+        pollSCM('* * * * *')
+        upstream(
+            upstreamProjects: 'job1,job2',
+            threshold: hudson.model.Result.SUCCESS)// UNSTABLE, FAILURE, NOT_BUILT, ABORTED
+        ) // triggers current job when any of the upstream job has completed with success
+    }
+    parameters {
+        string(name: 'branch', defaultvalue: 'Dev', description: 'select branch to build')
+        booleanParam(name: 'xyz', defaultvalue: true, description: '')
+        choice(choices: 'first\nsecond\nthird', description: 'select number' name: 'number')
+        text(name: 'text', defaultvalue: 'zyx', description: 'some text')
+        password(name: 'password', defaultvalue: 'zyx', description: 'password')
+        file(name: 'file', description: 'file')
+        credentials(name:'credentials', description: 'asdfds', required: true)  
+    }
+    options {
+        timestamps() // timestamp at pipeline level
+        buildDiscarder(logRoataor(numToKeepStr: '1'))
+        disableConcurrentBuilds()
+        skipStagesAfterUnstable()
+        checkoutToSubdirectory('someSubDir')
+        newContainerPerStage() // used with docker or dockerfile agent
+                               // each stage will run in a new container instance on same node.
+    }
+    environment {
+        name1 = "nik1"
+        name2 = "nik2"
+        version = "1.0"
+    }
+    stages{
+        stage('stage 1'){
+            steps{
+                script{ //for using groovy/stripted syntax
+                    def name = "nik"
+                    if(name == "nik")
+                        println("hi ${name}")
+                    else
+                        println("don't know your name")
+                    
+                    sleep 2
+                    echo "end of script"
+                }
+                retry(3){
+                    echo "before error"
+                    error "error in retry"
+                }
+                echo "after retrying 3 times"
+                timeout(time: 1, unit: 'SECONDS'){
+                    echo "SLEEPING IN TIMOUT"
+                    sleep 2
+                }
+            }
+        }
+    
+        stage('stage 2'){
+            tools{
+                maven 'maven3_5_2'
+            }
+            options{
+                timestamp()// timestamps will be printed at stage level
+                retry(3) // retry 3 times if stage fails
+                timeout(time: 1, unit: 'SECONDS') //NANOSECONDS, MICROSECONDS, MILLISECONDS, SECONDS, MINUDES, HOURS, DAYS
+                skipDefaultCheckout() // this option prevent from checking out code in repo
+            }
+            steps{
+                timestamps { // timestamp block
+                    echo "some text" // only this command will show timestamp 
+                }
+                script{ 
+                    currentBuild.result = 'FAILURE' // SETTING THIS will not retry 
+                    sleep 2
+                }
+            }
+        }
+        stage('stage3 '){
+            environment {
+                name3 = "ayu" // if variable has same name, stage level var will take precedence
+                SOME_USERNAME_PASSWORD = credentials("some_username_password") // specify the id
+                SOME_SECRET = credentials("some_secret")
+            }
+            steps {
+                echo "name1 {$name1}"
+                echo "name2 {$name2}"
+                echo "name3 {$name3}"
+                sh "printenv"
+
+                echo "SOME_USERNAME_PASWORD ${SOME_USERNAME_PASSWORD}" //WILL print username:password
+                echo "SOME_USERNAME_PASSWORD_USR ${SOME_USERNAME_PASSWORD_USR}"
+                echo "SOME_USERNAME_PASSWORD_PSW ${SOME_USERNAME_PASSWORD_PSW}"
+                echo "SOME_SECRET ${SOME_SECRET}"
+            }
+        }
+        stage('STAGE 4'){
+            when {//decides whether the stage will execute or skipped 
+                beforeAgent false
+                branch 'master'
+                buildingTag() // stage execute when building from a tag
+                tag '1.0'
+                changelog '.*some_text.*' //build only when commit message matches
+                changeRequest() // stage only execute when there is a pull request
+                changeRequest title:"when-pr" // build only when pr has specific title
+                changeset glob: "*.js", caseSensitive: true // build only when file commited matches this
+                environment name: 'name1', value: 'nik1'
+                equals expected: "nik1", actual: name1
+                not{
+                    equals expected: "nik1", actual: name1
+                }
+                expression {
+                    version == '1.0'
+                }
+                allOf{}
+                anyOf{
+                    environment name: "nam"
+                    environment ....
+                }
+            }
+            steps{
+                echo ""
+            }
+        }
+        stage('STAGE 4'){
+            failFast true // if one of the stage fail, rest will also fail
+            parallel { // underlying stages will run in parallel
+                stage("parallel stage 1"){
+                    steps {
+                        echo "stage 1 executing "
+                        sleep 10
+                    }
+                }
+                stage("parallel stage 2"){
+                    steps {
+                        echo "stage 2 executing "
+                        sleep 10
+                    }
+                }
+            }
+        }
+        stage('STAGE 5'){
+            input {
+                message "Please provide input"
+                ok "submit"
+                submitter "nikhchau, yiei"
+                submitterParameter "whoIsSubmitter" 
+                parameters {
+                    string(name: 'branch', defaultvalue: 'Dev', description: 'select branch to build')
+                    booleanParam(name: 'xyz', defaultvalue: true, description: '')
+                    choice(choices: 'first\nsecond\nthird', description: 'select number' name: 'number')
+                    text(name: 'text', defaultvalue: 'zyx', description: 'some text')
+                    password(name: 'password', defaultvalue: 'zyx', description: 'password')
+                    file(name: 'file', description: 'file')
+                    credentials(name:'credentials', description: 'asdfds', required: true)
+                }
+            }
+            steps{
+                echo "${branch} ${xyz}" // access input variable using ${parametername}
+            }
+            post{ // defined at stage level
+                success{ 
+                    echo 'on success'
+                }
+                failure{
+                    echo 'on failure'
+                }
+                always{
+                    echo 'always'
+                }
+            }
+        }
+
+        stage('STAGE 5'){
+            steps{
+                script{
+                    def shellOutput = sh(script: "ls -al",
+                                        returnStdout: true
+                                    ).trim()
+                    echo "shellOutput: ${shellOutput}"
+
+                    def shellReturnStatus = sh(script: "ls -al",
+                                        returnStatus: true 
+                                    ).trim()
+                    echo "shellReturnStatus: ${shellReturnStatus}"
+
+                    if(shellReturnStatus == 1)
+                        currentBuild.result = 'FAILURE'
+
+                }
+                withEnv(['ENV_VAR=Java', 'JAVA_VERSION=java -version']){
+                    sh 'echo ENV_VAR : $ENV_VAR'
+                    sh '$JAVA_VERSION'    
+                }// DEFINE env var for this scope
+            }
+        } 
+    }
+    post{
+        changed{ //when there is a diff b/w last build status and current
+
+        }
+        unstable{
+
+        }
+        fixed{ // when previous build failed or unstable and current is success
+
+        }
+        regression {
+            // runs only if current build is fail, unstable, aborted but previous was success
+        }
+        aborted{}
+        cleanup {} //runs after other post steps, regardless of the build status
+    }
+}
